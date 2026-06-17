@@ -1,0 +1,150 @@
+# ============================================================
+# Ghost Requirement Agent — Helm Values
+# ============================================================
+# Override any value via: helm install ghost ./helm/ghost -f my-values.yaml
+
+# ── Global ───────────────────────────────────────────────────
+global:
+  imageRegistry: ""            # Optional: prefix all image pulls with a private registry
+  imagePullSecrets: []
+
+# ── API Server (FastAPI) ──────────────────────────────────────
+api:
+  replicaCount: 2
+  image:
+    repository: your-org/ghost-api
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+  service:
+    type: ClusterIP
+    port: 8000
+  env:
+    ENV: production
+    LOG_LEVEL: INFO
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 8000
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readinessProbe:
+    httpGet:
+      path: /api/health/detailed
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+
+# ── Celery Workers ────────────────────────────────────────────
+worker:
+  image:
+    repository: your-org/ghost-api   # same image, different entrypoint
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  queues:
+    ingestion:
+      replicaCount: 2
+      concurrency: 4
+      queue: "ghost.ingestion"
+    approval:
+      replicaCount: 1
+      concurrency: 2
+      queue: "ghost.approval"
+    prAnalysis:
+      replicaCount: 2
+      concurrency: 4
+      queue: "ghost.pr_analysis"
+    deadLetter:
+      replicaCount: 1
+      concurrency: 1
+      queue: "ghost.dead_letter"
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "800m"
+      memory: "768Mi"
+
+# ── Ingress ───────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: ghost.your-org.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ghost-tls
+      hosts:
+        - ghost.your-org.com
+
+# ── Secrets (provided at deploy time, not stored in chart) ────
+secrets:
+  geminiApiKey: ""          # GEMINI_API_KEY
+  jwtSecret: ""             # JWT_SECRET
+  piiSalt: ""               # PII_SALT
+  slackSigningSecret: ""    # SLACK_SIGNING_SECRET
+  githubWebhookSecret: ""   # GITHUB_WEBHOOK_SECRET
+  githubToken: ""           # GITHUB_TOKEN
+  databaseUrl: ""           # postgresql://user:pass@host:5432/ghost
+  redisUrl: ""              # redis://host:6379/0
+
+# ── Config (non-secret) ───────────────────────────────────────
+config:
+  jwtTokenExpiryMinutes: "60"
+
+# ── Pod Disruption Budget ─────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ── HashiCorp Vault ───────────────────────────────────────────
+# Secret resolution via Vault KV v2 + Kubernetes auth.
+# Requires:
+#   1. Vault cluster reachable from the pod network.
+#   2. A Vault policy "ghost-policy" granting read on the path.
+#   3. A Kubernetes auth role "ghost-agent" bound to this service account.
+#
+# Production deployment steps:
+#   vault auth enable kubernetes
+#   vault write auth/kubernetes/role/ghost-agent \
+#       bound_service_account_names=ghost-agent \
+#       bound_service_account_namespaces=default \
+#       policies=ghost-policy \
+#       ttl=1h
+vault:
+  enabled: true
+  address: "http://vault:8200"          # Override with your Vault cluster URL
+  authMethod: "kubernetes"              # token | kubernetes
+  k8sRole: "ghost-agent"               # Vault Kubernetes auth role
+  k8sMount: "kubernetes"               # Vault Kubernetes auth mount path
+  mount: "secret"                       # KV v2 mount point
+  path: "ghost/production"             # Secret path (ghost/<env>)
+  cacheTtlSeconds: "300"               # In-memory cache TTL in seconds
+  # Static token — only used when authMethod=token (never for production)
+  token: ""
+
+# ── RBAC (for Kubernetes auth) ────────────────────────────────
+# Creates a ServiceAccount, ClusterRoleBinding, and TokenReview permissions
+# so the Ghost pods can authenticate to Vault via the K8s auth method.
+serviceAccount:
+  create: true
+  name: "ghost-agent"
+  annotations: {}
+

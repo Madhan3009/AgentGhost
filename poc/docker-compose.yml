@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ghost
+      POSTGRES_PASSWORD: ghostpassword
+      POSTGRES_DB: ghost_poc
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6380:6379"

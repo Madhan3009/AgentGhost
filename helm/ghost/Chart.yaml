@@ -1,0 +1,19 @@
+apiVersion: v2
+name: ghost
+description: >
+  Ghost Requirement Agent — Autonomous pipeline for capturing undocumented
+  product requirements from Slack/Teams and reconciling them against the
+  engineering backlog using Gemini 2.5 Flash + pgvector.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ai
+  - agents
+  - requirements
+  - nlp
+  - gemini
+home: https://github.com/your-org/ghost
+maintainers:
+  - name: Ghost Team
+    email: eng@your-org.com

@@ -1,0 +1,79 @@
+# ──────────────────────────────────────────────────────────────
+# Environment variables and Secrets (CRITICAL)
+# ──────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# ──────────────────────────────────────────────────────────────
+# Python / FastAPI / Celery
+# ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+celerybeat-schedule
+celerybeat.pid
+
+# ──────────────────────────────────────────────────────────────
+# Virtual Environments
+# ──────────────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env_dir/
+agents_env/
+
+# ──────────────────────────────────────────────────────────────
+# Next.js / Node / React (Dashboard)
+# ──────────────────────────────────────────────────────────────
+node_modules/
+app/.next/
+app/out/
+app/build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ──────────────────────────────────────────────────────────────
+# IDEs and Editors
+# ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ──────────────────────────────────────────────────────────────
+# Database / Docker / Volumes
+# ──────────────────────────────────────────────────────────────
+*.sqlite3
+pgdata/
+redis_data/
+prometheus_data/
+grafana_data/
