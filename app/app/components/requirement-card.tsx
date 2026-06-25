@@ -386,13 +386,13 @@ export function RequirementCard({
       <div className="divider" />
 
       {/* ── Action Buttons ───────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: '8px' }}>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {isDiscovery ? (
           <button
             onClick={handleApprove}
             disabled={approving}
             className="btn-green"
-            style={{ flex: 1, justifyContent: 'center', opacity: approving ? 0.7 : 1, cursor: approving ? 'not-allowed' : 'pointer' }}
+            style={{ flex: '1 1 auto', minWidth: '140px', justifyContent: 'center', opacity: approving ? 0.7 : 1, cursor: approving ? 'not-allowed' : 'pointer' }}
           >
             <Plus style={{ width: '14px', height: '14px' }} />
             {approving ? 'Pushing to Jira...' : 'Push to Jira'}
@@ -402,7 +402,7 @@ export function RequirementCard({
             onClick={handleApprove}
             disabled={approving}
             className="btn-red"
-            style={{ flex: 1, justifyContent: 'center', opacity: approving ? 0.7 : 1, cursor: approving ? 'not-allowed' : 'pointer' }}
+            style={{ flex: '1 1 auto', minWidth: '140px', justifyContent: 'center', opacity: approving ? 0.7 : 1, cursor: approving ? 'not-allowed' : 'pointer' }}
           >
             <AlertTriangle style={{ width: '14px', height: '14px' }} />
             {approving ? 'Approving...' : 'Approve Resolution'}
@@ -411,6 +411,7 @@ export function RequirementCard({
         <button
           onClick={onDismiss}
           className="btn-ghost"
+          style={{ flex: '1 1 auto', minWidth: '90px', justifyContent: 'center' }}
         >
           <Trash2 style={{ width: '13px', height: '13px' }} />
           Dismiss

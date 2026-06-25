@@ -266,14 +266,14 @@ export default function DashboardPage() {
           margin: '0 auto',
           padding: '0 24px 40px',
           width: '100%',
-          display: 'grid',
-          gridTemplateColumns: '320px 1fr',
+          display: 'flex',
+          flexWrap: 'wrap',
           gap: '20px',
           flex: 1,
         }}
       >
         {/* ── Left: Developer Panel ──────────────────────────── */}
-        <aside style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <aside style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '16px', flexShrink: 0 }}>
 
           {/* Backlog Seed */}
           <div className="glass-card" style={{ padding: '20px' }}>
@@ -499,7 +499,7 @@ export default function DashboardPage() {
         </aside>
 
         {/* ── Right: Inbox ────────────────────────────────────── */}
-        <main>
+        <main style={{ flex: 1, minWidth: '320px' }}>
           <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Inbox style={{ width: '16px', height: '16px', color: '#6366f1' }} />

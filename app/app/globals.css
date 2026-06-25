@@ -1,7 +1,7 @@
-@import "tailwindcss";
-
 /* ─── Google Font ─────────────────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@import "tailwindcss";
 
 :root {
   --background: #0c0f1a;
@@ -152,6 +152,7 @@ body {
   padding: 24px;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
   transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
@@ -177,6 +178,7 @@ body {
   padding: 24px;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
   transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 

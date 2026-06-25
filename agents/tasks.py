@@ -45,6 +45,22 @@ from agents.metrics import (
 
 logger = logging.getLogger(__name__)
 
+import celery
+
+class GhostDLQTask(celery.Task):
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        from agents.dead_letter import route_to_dead_letter
+        if self.name == "agents.tasks.process_ingestion_task":
+            MESSAGES_PROCESSED.labels(status="failed").inc()
+        DEAD_LETTERS.labels(task_name=self.name).inc()
+        route_to_dead_letter(
+            task_name=self.name,
+            task_args=list(args) if args else [],
+            task_kwargs=kwargs or {},
+            exception=exc,
+            traceback_str=str(einfo),
+        )
+        super().on_failure(exc, task_id, args, kwargs, einfo)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main Pipeline Task (ghost.ingestion queue)
@@ -53,6 +69,7 @@ logger = logging.getLogger(__name__)
 
 @app.task(
     bind=True,
+    base=GhostDLQTask,
     max_retries=5,
     queue="ghost.ingestion",
     name="agents.tasks.process_ingestion_task",
@@ -86,7 +103,9 @@ def process_ingestion_task(self, message_id: str):
             logger.warning(f"[Celery/Ingestion] Message not found: {message_id}")
             return {"status": "skipped", "reason": "message_not_found"}
 
-        raw_payload = json.loads(row["raw_payload"])
+        raw_payload = row["raw_payload"]
+        if isinstance(raw_payload, str):
+            raw_payload = json.loads(raw_payload)
         raw_message_text = raw_payload.get("text", "").strip()
         message_text = mask_pii_content(raw_message_text)
         channel = row["source_channel"] or raw_payload.get("channel", "unknown")
@@ -227,7 +246,7 @@ def process_ingestion_task(self, message_id: str):
                     draft_dict = draft.model_dump()
                 elif isinstance(draft, dict):
                     draft_dict = draft
-            
+
             if not draft_dict and final_resolution == "create_new_ticket":
                 # Fallback draft if Agent 3 didn't produce one
                 draft_dict = {
@@ -314,23 +333,6 @@ def process_ingestion_task(self, message_id: str):
         raise self.retry(exc=exc, countdown=2 ** (self.request.retries + 1))
 
 
-@process_ingestion_task.on_failure
-def ingestion_task_on_failure(exc, task_id, args, kwargs, einfo):
-    """
-    Called when process_ingestion_task exhausts all retries.
-    Routes the failure envelope to the ghost.dead_letter queue.
-    """
-    from agents.dead_letter import route_to_dead_letter
-    MESSAGES_PROCESSED.labels(status="failed").inc()
-    DEAD_LETTERS.labels(task_name="process_ingestion_task").inc()
-    route_to_dead_letter(
-        task_name="agents.tasks.process_ingestion_task",
-        task_args=list(args),
-        task_kwargs=kwargs or {},
-        exception=exc,
-        traceback_str=str(einfo),
-    )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Human Approval Handler (ghost.approval queue, 2 workers, 5 retries)
@@ -339,6 +341,7 @@ def ingestion_task_on_failure(exc, task_id, args, kwargs, einfo):
 
 @app.task(
     bind=True,
+    base=GhostDLQTask,
     max_retries=5,
     queue="ghost.approval",
     name="agents.tasks.approve_action_task",
@@ -379,15 +382,20 @@ def approve_action_task(self, action_id: str, approved_by_user: str):
 
         resolution_type = row["resolution_type"]
         raw_draft = row["suggested_ticket_draft"]
-        suggested_draft = json.loads(raw_draft) if raw_draft else None
+        if isinstance(raw_draft, dict):
+            suggested_draft = raw_draft
+        elif isinstance(raw_draft, str):
+            try:
+                suggested_draft = json.loads(raw_draft)
+            except json.JSONDecodeError:
+                suggested_draft = {"raw": raw_draft}
+        else:
+            suggested_draft = None
         requirement_id = row["requirement_id"]
         req_vector = row["requirement_vector"]
         req_text = row["extracted_text"]
 
     try:
-        # Generate mock Jira ticket ID
-        jira_id = f"GHOST-{random.randint(1000, 9999)}"
-
         # Build ticket content from Agent 3's draft
         if resolution_type == "create_new_ticket" and suggested_draft:
             title = suggested_draft.get("title", "New Requirement")
@@ -405,6 +413,18 @@ def approve_action_task(self, action_id: str, approved_by_user: str):
                 f"Original requirement: {req_text}"
             )
             attribution = {}
+
+        # Create real Jira ticket via Atlassian Cloud REST API
+        from agents.jira_client import create_issue
+        from agents import config
+        priority = suggested_draft.get("priority", "Medium") if (suggested_draft and isinstance(suggested_draft, dict)) else "Medium"
+        jira_response = create_issue(
+            title=title,
+            description=description,
+            priority=priority,
+            labels=["ghost-agent", "auto-generated"],
+        )
+        jira_id = jira_response["key"]
 
         with get_db_cursor() as cur:
             # Write approved ticket to backlog_index with its vector for future matching
@@ -424,7 +444,7 @@ def approve_action_task(self, action_id: str, approved_by_user: str):
                     title,
                     description,
                     req_vector,
-                    f"https://jira.company.com/browse/{jira_id}",
+                    f"{config.JIRA_BASE_URL.rstrip('/')}/browse/{jira_id}",
                 ),
             )
 
@@ -478,22 +498,6 @@ def approve_action_task(self, action_id: str, approved_by_user: str):
         raise self.retry(exc=exc, countdown=2 ** (self.request.retries + 1))
 
 
-@approve_action_task.on_failure
-def approve_task_on_failure(exc, task_id, args, kwargs, einfo):
-    """
-    Called when approve_action_task exhausts all retries.
-    Routes the failure envelope to the ghost.dead_letter queue.
-    """
-    from agents.dead_letter import route_to_dead_letter
-    DEAD_LETTERS.labels(task_name="approve_action_task").inc()
-    route_to_dead_letter(
-        task_name="agents.tasks.approve_action_task",
-        task_args=list(args),
-        task_kwargs=kwargs or {},
-        exception=exc,
-        traceback_str=str(einfo),
-    )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PR Analysis Task (ghost.pr_analysis queue — Phase 4 placeholder)
@@ -501,6 +505,7 @@ def approve_task_on_failure(exc, task_id, args, kwargs, einfo):
 
 @app.task(
     bind=True,
+    base=GhostDLQTask,
     max_retries=3,
     queue="ghost.pr_analysis",
     name="agents.tasks.process_pr_analysis_task",
@@ -508,7 +513,7 @@ def approve_task_on_failure(exc, task_id, args, kwargs, einfo):
 def process_pr_analysis_task(self, pr_payload: dict):
     """
     Phase 4: GitHub PR diff analysis against known requirements.
-    
+
     Steps:
       1. Extract PR metadata (repo, number, title, diff_url)
       2. Fetch PR unified diff via GitHub API (falls back to mock diff if not configured)
@@ -521,9 +526,9 @@ def process_pr_analysis_task(self, pr_payload: dict):
     title = pr_payload.get("title", "Mock Pull Request")
     diff_url = pr_payload.get("diff_url", "")
     diff_text = pr_payload.get("diff_text", "")
-    
+
     logger.info(f"[Celery/PRAnalysis] Auditing PR #{pr_number} in repo {repo_name}")
-    
+
     # ── Step 1: Fetch PR Diff ────────────────────────────────────────────────
     if not diff_text and diff_url:
         from agents.config import GITHUB_TOKEN
@@ -532,7 +537,7 @@ def process_pr_analysis_task(self, pr_payload: dict):
             headers = {"Accept": "application/vnd.github.v3.diff"}
             if GITHUB_TOKEN:
                 headers["Authorization"] = f"token {GITHUB_TOKEN}"
-                
+
             # If repo_name and pr_number are valid, use official API
             if repo_name != "unknown" and pr_number != "unknown":
                 api_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
@@ -564,14 +569,14 @@ def process_pr_analysis_task(self, pr_payload: dict):
             "+  // Session timeout in milliseconds (40 minutes)\n"
             "+  sessionTimeout: 40 * 60 * 1000,\n"
         )
-        
+
     # ── Step 2: Fetch Candidate Constraints ───────────────────────────────
     candidates = []
     try:
         # Generate embedding for PR title + start of diff
         query_text = f"Title: {title}\nDiff: {diff_text[:300]}"
         query_emb = get_embedding(query_text)
-        
+
         with get_db_cursor() as cur:
             cur.execute(
                 """
@@ -591,7 +596,7 @@ def process_pr_analysis_task(self, pr_payload: dict):
                 })
     except Exception as db_err:
         logger.error(f"[Celery/PRAnalysis] Error loading candidate requirements: {db_err}")
-        
+
     if not candidates:
         logger.info("[Celery/PRAnalysis] Empty DB candidates. Loading testing/fallback constraints.")
         candidates = [
@@ -606,11 +611,11 @@ def process_pr_analysis_task(self, pr_payload: dict):
                 "is_hard_constraint": True
             }
         ]
-        
+
     req_context = ""
     for c in candidates:
         req_context += f"- Requirement [{c['id']}]: {c['requirement_text']} (Hard Constraint: {c['is_hard_constraint']})\n"
-        
+
     # ── Step 3: Run Agent 4 (PR Auditor) ─────────────────────────────────────
     try:
         agent = build_pr_auditor_agent()
@@ -619,18 +624,18 @@ def process_pr_analysis_task(self, pr_payload: dict):
         Title: {title}
         Number: {pr_number}
         Repository: {repo_name}
-        
+
         ## Pull Request Diff
         {diff_text}
-        
+
         ## Candidate Requirements
         {req_context}
         """
-        
+
         logger.info(f"[Celery/PRAnalysis] Reviewing PR diff with PR Auditor...")
         response = agent.run(prompt)
         audit_result = response.content
-        
+
         result_data = {}
         if audit_result:
             if hasattr(audit_result, "model_dump"):
@@ -652,7 +657,7 @@ def process_pr_analysis_task(self, pr_payload: dict):
             "violations": [],
             "summary": f"Audit execution failed: {str(agent_err)}"
         }
-        
+
     # ── Step 4: Persist Results to database ──────────────────────────────
     audit_id = uuid.uuid4()
     try:
@@ -674,7 +679,7 @@ def process_pr_analysis_task(self, pr_payload: dict):
         logger.info(f"[Celery/PRAnalysis] PR Audit saved to db: audit_id={audit_id}")
     except Exception as db_save_err:
         logger.error(f"[Celery/PRAnalysis] Error writing PR audit row: {db_save_err}")
-        
+
     return {
         "status": "completed",
         "audit_id": str(audit_id),
@@ -685,18 +690,3 @@ def process_pr_analysis_task(self, pr_payload: dict):
     }
 
 
-@process_pr_analysis_task.on_failure
-def pr_analysis_task_on_failure(exc, task_id, args, kwargs, einfo):
-    """
-    Called when process_pr_analysis_task exhausts all retries.
-    Routes the failure envelope to the ghost.dead_letter queue.
-    """
-    from agents.dead_letter import route_to_dead_letter
-    DEAD_LETTERS.labels(task_name="process_pr_analysis_task").inc()
-    route_to_dead_letter(
-        task_name="agents.tasks.process_pr_analysis_task",
-        task_args=list(args),
-        task_kwargs=kwargs or {},
-        exception=exc,
-        traceback_str=str(einfo),
-    )

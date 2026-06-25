@@ -27,7 +27,7 @@ RECONCILE_QUEUES := ghost.reconciliation
 APPROVAL_QUEUES := ghost.approval
 ALL_QUEUES := ghost.ingestion,ghost.embedding,ghost.reconciliation,ghost.approval,ghost.pr_analysis,ghost.dead_letter
 
-.PHONY: help up down init-db run-api run-workers run-dashboard dev logs test clean lint run-vault seed-vault
+.PHONY: help up down init-db run-api run-workers run-dashboard dev logs test clean lint run-vault seed-vault slack-listener slack-listener-logs
 
 # ── Default Target ─────────────────────────────────────────
 
@@ -152,6 +152,17 @@ run-dashboard: ## Start Next.js dashboard on port 3000
 	@echo "🖥️  Starting Ghost dashboard on http://localhost:3000..."
 	cd app && npm run dev
 
+# ── Slack Socket Mode Listener ──────────────────────────────────
+
+slack-listener: ## Start real-time Slack Socket Mode listener (all channels)
+	@echo "📡 Starting Ghost Slack Socket Mode listener..."
+	@echo "   Monitoring: ALL channels the bot is invited to"
+	@echo "   Pipeline:   ghost.ingestion → Celery → AI Agents → Dashboard"
+	PYTHONPATH=. $(PYTHON) -m agents.slack_listener
+
+slack-listener-logs: ## Tail Slack listener logs from Docker Compose
+	docker compose logs -f slack-listener
+
 # ── Full Dev Environment ───────────────────────────────────
 
 dev: ## Start all services (infrastructure + API + workers + dashboard)
@@ -173,11 +184,15 @@ dev: ## Start all services (infrastructure + API + workers + dashboard)
 	@echo "    Terminal 3 — Next.js Dashboard:"
 	@echo "      make run-dashboard"
 	@echo ""
+	@echo "    Terminal 4 — Slack Listener (real-time ingestion):"
+	@echo "      make slack-listener"
+	@echo ""
 	@echo "  📊 Dashboard: http://localhost:3000/dashboard"
 	@echo "  📡 API Docs:  http://localhost:8000/api/docs"
 	@echo "  🌸 Flower:    http://localhost:5555 (run: make run-flower)"
 	@echo "  🔐 Vault:     http://localhost:8200  (run: make run-vault && make seed-vault)"
 	@echo ""
+	@echo "  📡 Slack:     Listening on all channels (Socket Mode WebSocket)"
 	@echo "  💡 Vault (optional): Set VAULT_ENABLED=true to resolve secrets from Vault."
 
 # ── Testing ────────────────────────────────────────────────

@@ -87,6 +87,24 @@ GITHUB_WEBHOOK_SECRET: str = _resolve("GITHUB_WEBHOOK_SECRET", "")
 GITHUB_TOKEN: str = _resolve("GITHUB_TOKEN", "")
 PII_SALT: str = _resolve("PII_SALT", "ghost-pii-default-salt-value-987654321")
 
+# Slack Socket Mode (real-time listener — Phase 5)
+# SLACK_BOT_TOKEN  : xoxb-...  (Bot User OAuth Token)
+# SLACK_APP_TOKEN  : xapp-...  (App-Level Token, connections:write scope)
+SLACK_BOT_TOKEN: str = _resolve("SLACK_BOT_TOKEN", "")
+SLACK_APP_TOKEN: str = _resolve("SLACK_APP_TOKEN", "")
+
+# Jira Integration — Atlassian Cloud REST API v3 (Phase 6)
+# JIRA_BASE_URL    : https://<your-site>.atlassian.net
+# JIRA_EMAIL       : Atlassian account email
+# JIRA_API_TOKEN   : Personal API token from id.atlassian.com
+# JIRA_PROJECT_KEY : Short project key, e.g. GR
+# JIRA_ISSUE_TYPE  : Story | Task | Bug (default: Story)
+JIRA_BASE_URL:    str = _resolve("JIRA_BASE_URL", "")
+JIRA_EMAIL:       str = _resolve("JIRA_EMAIL", "")
+JIRA_API_TOKEN:   str = _resolve("JIRA_API_TOKEN", "")
+JIRA_PROJECT_KEY: str = _resolve("JIRA_PROJECT_KEY", "GR")
+JIRA_ISSUE_TYPE:  str = _resolve("JIRA_ISSUE_TYPE", "Story")
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Vault Configuration (non-secret — controls Vault client behaviour)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -125,6 +143,14 @@ def validate_config():
         issues.append("REDIS_URL is not set — Celery workers will not start")
     if not SLACK_SIGNING_SECRET and not IS_DEVELOPMENT:
         issues.append("SLACK_SIGNING_SECRET is not set — Slack webhooks will be insecure")
+    if not SLACK_BOT_TOKEN:
+        issues.append("SLACK_BOT_TOKEN is not set — Slack Socket Mode listener will not start")
+    if not SLACK_APP_TOKEN:
+        issues.append("SLACK_APP_TOKEN is not set — Slack Socket Mode listener will not start")
+    if not JIRA_BASE_URL:
+        issues.append("JIRA_BASE_URL is not set — approved requirements will NOT be pushed to Jira")
+    if JIRA_BASE_URL and not JIRA_API_TOKEN:
+        issues.append("JIRA_API_TOKEN is not set — Jira ticket creation will fail")
 
     if VAULT_ENABLED:
         logger.info(

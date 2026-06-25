@@ -106,7 +106,7 @@ services:
     depends_on:
       - prometheus
     healthcheck:
-      test: [["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -142,6 +142,41 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+
+  # ──────────────────────────────────────────────────────────────
+  # Slack Socket Mode Listener (real-time message ingestion)
+  # Connects to Slack via persistent WebSocket (no public URL needed).
+  # Requires: SLACK_BOT_TOKEN and SLACK_APP_TOKEN in .env
+  #
+  # To start standalone (without Docker):  make slack-listener
+  # ──────────────────────────────────────────────────────────────
+  slack-listener:
+    image: python:3.11-slim
+    container_name: ghost-slack-listener
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app
+      PYTHONUNBUFFERED: "1"
+      # Override DB/Redis URLs to reach other containers (not localhost)
+      DATABASE_URL: postgresql://ghost:ghostpassword@postgres:5432/ghost_poc
+      REDIS_URL: redis://redis:6379/0
+    command: sh -c "pip install -q slack-bolt slack-sdk celery[redis] psycopg2-binary python-dotenv google-genai agno prometheus-client && python -m agents.slack_listener"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import slack_bolt; print('ok')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   ghost_pgdata:
