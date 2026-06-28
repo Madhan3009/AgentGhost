@@ -190,8 +190,11 @@ def process_ingestion_task(self, message_id: str):
             final_similarity = result.similarity_score if result.similarity_score is not None else top_similarity
             final_ticket_id = result.closest_ticket_id or closest_ticket_id
 
-            # Override: if embedding found exact match and team agrees
-            if top_similarity >= 0.85 and final_resolution not in ("contradiction_detected", "create_new_ticket"):
+            # Override: only treat as exact match when similarity is near-verbatim (≥0.97).
+            # Values 0.85–0.97 are semantically related but may carry different specifics
+            # (e.g. different timeout values, changed deadlines) — these must go through
+            # Agent 3 contradiction detection rather than being silently auto-resolved.
+            if top_similarity >= 0.97 and final_resolution not in ("contradiction_detected", "create_new_ticket"):
                 final_resolution = "exact_match_found"
 
             # Map resolution to requirement status

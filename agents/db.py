@@ -1,27 +1,20 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from psycopg2.pool import SimpleConnectionPool
 from contextlib import contextmanager
 from agents.config import DATABASE_URL
 
 print(f"Connecting to database: {DATABASE_URL}")
 
-# Create connection pool
-try:
-    db_pool = SimpleConnectionPool(1, 20, DATABASE_URL)
-except Exception as e:
-    print(f"Error initializing connection pool: {e}")
-    db_pool = None
+
 
 @contextmanager
 def get_db_connection():
-    if not db_pool:
-        raise Exception("Database connection pool is not initialized.")
-    conn = db_pool.getconn()
+    # Use the DATABASE_URL directly; it may include sslmode=... which psycopg2 will honor
+    conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
     try:
         yield conn
     finally:
-        db_pool.putconn(conn)
+        conn.close()
 
 @contextmanager
 def get_db_cursor(commit=True):

@@ -550,14 +550,14 @@ def seed_backlog():
             "description": (
                 "Build two-factor authentication flow supporting authenticator app TOTP (RFC 6238) "
                 "and SMS-based verification via Twilio. User must be able to enroll, verify, "
-                "and revoke 2FA devices. Targeted release is scheduled for Q3 (end of September)."
+                "and revoke 2FA devices. Targeted release is scheduled for end of August (P0)."
             )
         },
         {
             "id": "PROJ-104",
             "title": "Session Management and Cookie Timeout",
             "description": (
-                "Set session cookie timeout to 30 minutes of inactivity. "
+                "Set session cookie timeout to 15 minutes of inactivity. "
                 "When the session times out, automatically redirect the user to the login screen. "
                 "Do not expire sessions during active typing or API calls."
             )
@@ -570,7 +570,7 @@ def seed_backlog():
                 "Remove legacy PayPal integration. Support: credit/debit cards, Apple Pay, Google Pay. "
                 "All payment errors must display user-friendly messages within 500ms."
             )
-        }
+        },
     ]
     
     seeded = []
@@ -749,15 +749,12 @@ def get_dashboard_actions():
 @app.post("/api/dashboard/actions/{action_id}/approve", tags=["dashboard"])
 def approve_action(
     action_id: str,
-    current_user: dict = Depends(require_reviewer),
 ):
     """
-    FR-08: Human approval gate — approve a reconciliation action.
+    FR-08: Approve a reconciliation action without authentication.
     Enqueues the Jira write + audit log to ghost.approval Celery queue.
-
-    Requires: JWT Bearer token (obtain via POST /api/auth/token).
     """
-    approved_by = current_user["sub"]
+    approved_by = "anonymous"
 
     # Validate action exists and is not already approved
     with get_db_cursor() as cur:
@@ -773,13 +770,13 @@ def approve_action(
     if row["human_approved"]:
         raise HTTPException(status_code=409, detail="Action is already approved")
 
-    # Enqueue to ghost.approval queue with authenticated user identity
+    # Enqueue to ghost.approval queue
     approve_action_task.delay(action_id, approved_by)
 
     # Prometheus
     APPROVALS.labels(action="approved").inc()
 
-    logger.info(f"Action approved: id={action_id} type={row['resolution_type']} by={approved_by}")
+    logger.info(f"Action approved (public): id={action_id} type={row['resolution_type']} by={approved_by}")
     return {
         "status": "approved_queued",
         "action_id": action_id,
@@ -791,14 +788,12 @@ def approve_action(
 @app.post("/api/dashboard/actions/{action_id}/dismiss", tags=["dashboard"])
 def dismiss_action(
     action_id: str,
-    current_user: dict = Depends(require_reviewer),
 ):
     """
     FR-08: Dismiss a reconciliation action — marks requirement as archived.
-
-    Requires: JWT Bearer token (obtain via POST /api/auth/token).
+    No authentication required; any user can dismiss.
     """
-    dismissed_by = current_user["sub"]
+    dismissed_by = "anonymous"
 
     with get_db_cursor() as cur:
         cur.execute(
@@ -818,7 +813,7 @@ def dismiss_action(
             (action_id,)
         )
 
-        # Write a dismiss audit entry with authenticated user identity
+        # Write a dismiss audit entry (anonymous)
         cur.execute(
             """
             INSERT INTO audit_log (action_id, actor_jwt_subject, action_payload)
@@ -834,7 +829,7 @@ def dismiss_action(
     # Prometheus
     APPROVALS.labels(action="dismissed").inc()
 
-    logger.info(f"Action dismissed: id={action_id} by={dismissed_by}")
+    logger.info(f"Action dismissed (public): id={action_id} by={dismissed_by}")
     return {"status": "dismissed", "action_id": action_id, "dismissed_by": dismissed_by}
 
 

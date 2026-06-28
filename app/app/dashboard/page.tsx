@@ -116,6 +116,9 @@ export default function DashboardPage() {
   const [slackUser, setSlackUser] = useState('priya_pm');
   const [sending, setSending] = useState(false);
 
+  // Hydration-safe mount flag — prevents disabled={true} vs disabled={null} mismatch
+  const [mounted, setMounted] = useState(false);
+
   // Log feed
   const [logs, setLogs] = useState<FeedbackEntry[]>([]);
   const logId = useState(0);
@@ -154,6 +157,10 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   useEffect(() => {
@@ -382,12 +389,12 @@ export default function DashboardPage() {
               </div>
               <button
                 type="submit"
-                disabled={sending || !slackText.trim()}
+                disabled={mounted && (sending || !slackText.trim())}
                 className="btn-primary"
                 style={{
                   justifyContent: 'center',
-                  opacity: sending || !slackText.trim() ? 0.6 : 1,
-                  cursor: sending || !slackText.trim() ? 'not-allowed' : 'pointer',
+                  opacity: mounted && (sending || !slackText.trim()) ? 0.6 : 1,
+                  cursor: mounted && (sending || !slackText.trim()) ? 'not-allowed' : 'pointer',
                 }}
               >
                 <Send style={{ width: '13px', height: '13px' }} />
