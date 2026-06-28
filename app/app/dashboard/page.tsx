@@ -18,7 +18,9 @@ import {
   CheckCircle,
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL 
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api` 
+  : 'http://localhost:8000/api';
 
 type DashboardStats = {
   pendingReview: number;
@@ -596,16 +598,25 @@ export default function DashboardPage() {
                     fontSize: '12px',
                   }}
                 >
-                  localhost:8000
+                  {process.env.NEXT_PUBLIC_API_URL || 'localhost:8000'}
                 </code>
-                . Start with:
+                .
               </p>
-              <div
-                className="mono-block"
-                style={{ fontSize: '12px', width: '100%', maxWidth: '360px' }}
-              >
-                {`make run-api\nmake run-workers`}
-              </div>
+              {!process.env.NEXT_PUBLIC_API_URL ? (
+                <>
+                  <p style={{ fontSize: '13px', color: '#4d5568', margin: '8px 0 4px 0' }}>Start with:</p>
+                  <div
+                    className="mono-block"
+                    style={{ fontSize: '12px', width: '100%', maxWidth: '360px' }}
+                  >
+                    {`make run-api\nmake run-workers`}
+                  </div>
+                </>
+              ) : (
+                <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '8px', textAlign: 'center' }}>
+                  Please make sure your Render backend service is deployed and active.
+                </p>
+              )}
             </div>
           ) : items.length === 0 ? (
             /* ── Empty State ──────── */
