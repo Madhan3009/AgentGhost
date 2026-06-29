@@ -187,6 +187,9 @@ def process_ingestion_task(self, message_id: str):
 
             # Determine final resolution type (respect exact match logic)
             final_resolution = result.resolution_type
+            if not final_resolution or final_resolution not in ("exact_match_found", "contradiction_detected", "create_new_ticket"):
+                final_resolution = "create_new_ticket"
+                
             final_similarity = result.similarity_score if result.similarity_score is not None else top_similarity
             final_ticket_id = result.closest_ticket_id or closest_ticket_id
 
